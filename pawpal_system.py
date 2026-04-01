@@ -18,6 +18,7 @@ classDiagram
         +add_pet(pet: Pet) None
         +remove_pet(pet_name: str) None
         +get_pets() list~Pet~
+        +get_all_tasks() list~Task~
     }
     class Pet {
         +str name
@@ -56,6 +57,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+_PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+
 
 # ---------------------------------------------------------------------------
 # Task
@@ -63,21 +66,21 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Task:
-    """A single pet-care item."""
+    """A single pet-care item (walk, feeding, meds, etc.)."""
 
     title: str
     duration_minutes: int
-    priority: str          # "low" | "medium" | "high"
+    priority: str           # "low" | "medium" | "high"
     category: str = "general"
     completed: bool = False
 
     def mark_complete(self) -> None:
-        """Mark this task as done."""
-        pass  # TODO: implement
+        """Mark this task as done for the day."""
+        self.completed = True
 
     def reset(self) -> None:
-        """Reset completed status (e.g. for a new day)."""
-        pass  # TODO: implement
+        """Clear completion status so the task is fresh for a new day."""
+        self.completed = False
 
 
 # ---------------------------------------------------------------------------
@@ -86,25 +89,25 @@ class Task:
 
 @dataclass
 class Pet:
-    """Represents a single pet."""
+    """Represents a single pet and owns its list of care tasks."""
 
     name: str
-    species: str           # "dog" | "cat" | "other"
+    species: str            # "dog" | "cat" | "other"
     age_years: int = 0
     notes: str = ""
     tasks: list[Task] = field(default_factory=list)
 
     def add_task(self, task: Task) -> None:
-        """Append a task to this pet's task list."""
-        pass  # TODO: implement
+        """Append a new care task to this pet's task list."""
+        self.tasks.append(task)
 
     def remove_task(self, title: str) -> None:
-        """Remove a task by title (case-insensitive)."""
-        pass  # TODO: implement
+        """Remove the first task whose title matches (case-insensitive)."""
+        self.tasks = [t for t in self.tasks if t.title.lower() != title.lower()]
 
     def get_tasks(self) -> list[Task]:
-        """Return all tasks for this pet."""
-        pass  # TODO: implement
+        """Return a copy of this pet's task list."""
+        return list(self.tasks)
 
 
 # ---------------------------------------------------------------------------
@@ -113,24 +116,31 @@ class Pet:
 
 @dataclass
 class Owner:
-    """Represents the pet owner."""
+    """Represents the pet owner and aggregates all their pets."""
 
     name: str
-    available_minutes: int = 60    # time budget for the day
+    available_minutes: int = 60     # total time budget for the day
     preferences: list[str] = field(default_factory=list)
     _pets: list[Pet] = field(default_factory=list, repr=False)
 
     def add_pet(self, pet: Pet) -> None:
         """Register a pet under this owner."""
-        pass  # TODO: implement
+        self._pets.append(pet)
 
     def remove_pet(self, pet_name: str) -> None:
         """Remove a pet by name (case-insensitive)."""
-        pass  # TODO: implement
+        self._pets = [p for p in self._pets if p.name.lower() != pet_name.lower()]
 
     def get_pets(self) -> list[Pet]:
-        """Return all pets owned."""
-        pass  # TODO: implement
+        """Return a copy of the owner's pet list."""
+        return list(self._pets)
+
+    def get_all_tasks(self) -> list[Task]:
+        """Collect and return every task across all pets."""
+        all_tasks: list[Task] = []
+        for pet in self._pets:
+            all_tasks.extend(pet.get_tasks())
+        return all_tasks
 
 
 # ---------------------------------------------------------------------------
@@ -139,26 +149,91 @@ class Owner:
 
 @dataclass
 class Scheduler:
-    """Builds a daily care plan for one Owner + Pet pair."""
+    """Builds a prioritised daily care plan for one Owner + Pet pair."""
 
     owner: Owner
     pet: Pet
-    time_budget_minutes: int = 0   # defaults to owner.available_minutes if 0
+    time_budget_minutes: int = 0    # 0 means use owner.available_minutes
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _effective_budget(self) -> int:
+        """Return the active time budget (explicit override or owner's budget)."""
+        return self.time_budget_minutes if self.time_budget_minutes > 0 else self.owner.available_minutes
+
+    def _sorted_tasks(self) -> list[Task]:
+        """Return the pet's tasks sorted high → medium → low, skipping completed ones."""
+        return sorted(
+            [t for t in self.pet.get_tasks() if not t.completed],
+            key=lambda t: _PRIORITY_ORDER.get(t.priority, 99),
+        )
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def build_plan(self) -> list[Task]:
         """
-        Select and order tasks that fit within the time budget.
+        Greedily select tasks that fit within the time budget.
 
-        Strategy (to implement):
-          1. Filter tasks by priority (high → medium → low).
-          2. Greedily add tasks until time_budget is exhausted.
-          3. Return the ordered list.
+        Tasks are considered in priority order (high first). Each task is
+        included if its duration fits in the remaining time.  Returns the
+        ordered list of selected tasks.
         """
-        pass  # TODO: implement
+        budget = self._effective_budget()
+        plan: list[Task] = []
+        remaining = budget
+
+        for task in self._sorted_tasks():
+            if task.duration_minutes <= remaining:
+                plan.append(task)
+                remaining -= task.duration_minutes
+
+        return plan
 
     def explain_plan(self, plan: list[Task]) -> str:
         """
-        Return a human-readable explanation of why each task was chosen
-        and when it is scheduled.
+        Return a formatted, human-readable explanation of the daily plan.
+
+        Shows each task with its start time, duration, priority, and a brief
+        reason for its inclusion. Tasks are assumed to start back-to-back from
+        08:00.
         """
-        pass  # TODO: implement
+        if not plan:
+            return "No tasks fit within today's time budget."
+
+        budget = self._effective_budget()
+        total_scheduled = sum(t.duration_minutes for t in plan)
+        lines: list[str] = [
+            f"Daily plan for {self.pet.name} ({self.owner.name})",
+            f"Time budget: {budget} min  |  Scheduled: {total_scheduled} min",
+            "-" * 50,
+        ]
+
+        # Walk through tasks, tracking a running clock from 08:00
+        hour, minute = 8, 0
+        for task in plan:
+            start = f"{hour:02d}:{minute:02d}"
+            end_minute = minute + task.duration_minutes
+            end_hour = hour + end_minute // 60
+            end_minute = end_minute % 60
+            end = f"{end_hour:02d}:{end_minute:02d}"
+
+            reason = f"priority={task.priority}"
+            lines.append(
+                f"  {start}–{end}  [{task.category}]  {task.title}  "
+                f"({task.duration_minutes} min, {reason})"
+            )
+
+            hour, minute = end_hour, end_minute
+
+        lines.append("-" * 50)
+        skipped = [t for t in self.pet.get_tasks() if t not in plan and not t.completed]
+        if skipped:
+            lines.append("Skipped (did not fit in budget):")
+            for t in skipped:
+                lines.append(f"  • {t.title} ({t.duration_minutes} min, priority={t.priority})")
+
+        return "\n".join(lines)
