@@ -60,14 +60,19 @@ The scheduler uses a **greedy / first-fit algorithm**: it iterates through tasks
 
 **a. How you used AI**
 
-AI (Claude Code) was used across every phase of this project:
+AI tools (VS Code Copilot and Claude Code) were used across every phase:
 
-- **Phase 1 – Design:** AI generated the initial Mermaid UML from a plain-English description of the four classes and their relationships. The most useful prompt pattern was describing *responsibilities* ("the Scheduler should retrieve tasks from the Owner's pets") rather than *implementation* ("write a method that…"), which produced cleaner structural suggestions.
-- **Phase 2 – Implementation:** AI filled in the method bodies for the class skeletons. The most effective prompts were incremental — asking for one method at a time and reviewing before moving to the next — rather than asking for the entire file at once.
-- **Phase 3 – Testing:** AI drafted the initial set of 9 tests from the existing method signatures. Asking "what are the most important edge cases for a pet scheduler with priority sorting?" produced the full list of edge cases (empty pet, zero budget, all tasks complete, duplicate conflicts) that expanded the suite to 26 tests.
-- **Phase 4 – UI:** AI updated `app.py` to surface conflict warnings and recurrence logic, using `st.warning`, `st.success`, and `st.toast` to match Streamlit best practices.
+- **Phase 1 – Design:** Copilot Chat generated the initial Mermaid UML from a plain-English description of the four classes. The most useful prompt pattern was describing *responsibilities* rather than *implementation* — e.g., "the Scheduler should retrieve tasks from the Owner's pets" — which produced cleaner structural suggestions than asking "write a method that loops over pets."
+- **Phase 2 – Implementation:** Agent Mode in Copilot fleshed out all four class bodies from the skeleton. Incremental prompts (one method at a time, reviewed before moving on) produced better results than asking for the whole file at once.
+- **Phase 3 – Testing:** A fresh Copilot Chat session (separate from the implementation session) was opened specifically for testing. Asking "What are the most important edge cases for a pet scheduler with priority sorting and recurring tasks?" surfaced the full edge-case list (empty pet, budget too small, all tasks complete, duplicate conflicts) that grew the suite from 9 to 26 tests.
+- **Phase 4 – UI polish:** Inline Chat on specific `st.button` blocks suggested `st.toast` for the recurrence feedback — a Streamlit component not used elsewhere — which was a genuinely useful discovery.
 
-The most consistently useful prompt pattern was: **context + constraint + question** — e.g., "Given these four dataclasses, the Scheduler must not exceed the owner's time budget — how should `build_plan()` implement greedy selection?"
+**Most effective Copilot features for the scheduler specifically:**
+- *Agent Mode* — best for scaffolding and refactoring entire files (class skeletons → full implementations)
+- *Inline Chat* — best for targeted edits (one method, one UI component) where full-file context would add noise
+- *Separate chat sessions per phase* — keeping design, implementation, testing, and UI in separate sessions prevented context bleed. When the testing session opened with `#codebase`, Copilot focused on the existing signatures rather than re-proposing design changes that had already been decided.
+
+The most consistently useful prompt pattern: **context + constraint + question** — e.g., "Given these four dataclasses, the Scheduler must not exceed the owner's time budget — how should `build_plan()` implement greedy selection?"
 
 **b. Judgment and verification**
 

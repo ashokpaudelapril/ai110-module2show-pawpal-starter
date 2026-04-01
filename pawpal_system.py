@@ -47,6 +47,7 @@ classDiagram
         +int time_budget_minutes
         +build_plan() list~Task~
         +explain_plan(plan: list~Task~) str
+        +filter_tasks(completed, pet_name) list~Task~
         +get_conflicts() list~tuple~
     }
 
@@ -207,6 +208,35 @@ class Scheduler:
                 remaining -= task.duration_minutes
 
         return plan
+
+    def filter_tasks(self, *, completed: bool | None = None, pet_name: str | None = None) -> list[Task]:
+        """
+        Return tasks filtered by completion status and/or pet name.
+
+        Parameters
+        ----------
+        completed : bool | None
+            If True, return only completed tasks.
+            If False, return only incomplete tasks.
+            If None (default), return all tasks regardless of status.
+        pet_name : str | None
+            If provided, only return tasks whose pet name matches (case-insensitive).
+            If None, uses the Scheduler's own pet.
+        """
+        source_pet = self.pet
+        if pet_name is not None and pet_name.lower() != self.pet.name.lower():
+            # Caller asked for a different pet — look it up through the owner
+            match = next(
+                (p for p in self.owner.get_pets() if p.name.lower() == pet_name.lower()), None
+            )
+            if match is None:
+                return []
+            source_pet = match
+
+        tasks = source_pet.get_tasks()
+        if completed is not None:
+            tasks = [t for t in tasks if t.completed == completed]
+        return tasks
 
     def get_conflicts(self) -> list[tuple[Task, Task]]:
         """
