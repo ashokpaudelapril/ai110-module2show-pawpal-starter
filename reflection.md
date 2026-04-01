@@ -2,15 +2,33 @@
 
 ## 1. System Design
 
+**Core user actions (identified from the scenario):**
+
+1. **Add a pet** – the owner enters a pet's name, species, and age so the system knows who it is scheduling for.
+2. **Add / edit care tasks** – the owner defines tasks (walk, feeding, meds, grooming, enrichment) with a duration and priority so the scheduler has something to work with.
+3. **Generate a daily plan** – the owner clicks "Generate schedule" and receives an ordered list of tasks that fit within their available time, with a plain-language explanation of the choices.
+
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+The initial UML includes four classes:
+
+| Class | Responsibility |
+|---|---|
+| `Task` | Holds a single care item: title, duration, priority, category, and completion status. It is a pure data object with no dependencies. |
+| `Pet` | Owns a list of `Task` objects and provides methods to add/remove tasks. Carries identity info (name, species, age). |
+| `Owner` | Aggregates one or more `Pet` objects and stores the owner's daily time budget and preferences. |
+| `Scheduler` | References one `Owner` and one `Pet`; its `build_plan()` method selects tasks that fit the time budget ordered by priority, and `explain_plan()` narrates the result. |
+
+Relationships:
+- `Owner` has 1-to-many `Pet`
+- `Pet` has 0-to-many `Task`
+- `Scheduler` references both `Owner` (for the time budget) and `Pet` (for the task list)
+
+Python dataclasses are used for `Task`, `Pet`, `Owner`, and `Scheduler` to keep the code concise and readable.
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+No changes yet — this section will be updated during implementation if the design evolves.
 
 ---
 
