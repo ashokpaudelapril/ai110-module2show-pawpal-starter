@@ -76,9 +76,7 @@ See the **Prompt Comparison** section in `reflection.md`.
 
 ## 📸 Demo
 
-*Add a screenshot of your running app here using the embed below:*
-
-<a href="/course_images/ai110/pawpal_screenshot.png" target="_blank"><img src='/course_images/ai110/pawpal_screenshot.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
+<a href="Screenshot 2026-03-31 at 9.23.54 PM.png" target="_blank"><img src='Screenshot 2026-03-31 at 9.23.54 PM.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
 
 ## Getting started
 
