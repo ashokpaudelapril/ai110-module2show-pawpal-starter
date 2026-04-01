@@ -14,21 +14,21 @@ classDiagram
     class Owner {
         +str name
         +int available_minutes
-        +list~str~ preferences
-        +add_pet(pet: Pet) None
-        +remove_pet(pet_name: str) None
-        +get_pets() list~Pet~
-        +get_all_tasks() list~Task~
+        +list preferences
+        +add_pet(pet Pet) None
+        +remove_pet(pet_name str) None
+        +get_pets() list
+        +get_all_tasks() list
     }
     class Pet {
         +str name
         +str species
         +int age_years
         +str notes
-        +list~Task~ tasks
-        +add_task(task: Task) None
-        +remove_task(title: str) None
-        +get_tasks() list~Task~
+        +list tasks
+        +add_task(task Task) None
+        +remove_task(title str) None
+        +get_tasks() list
     }
     class Task {
         +str title
@@ -45,10 +45,10 @@ classDiagram
         +Owner owner
         +Pet pet
         +int time_budget_minutes
-        +build_plan() list~Task~
-        +explain_plan(plan: list~Task~) str
-        +filter_tasks(completed, pet_name) list~Task~
-        +get_conflicts() list~tuple~
+        +build_plan() list
+        +explain_plan(plan list) str
+        +filter_tasks(completed bool, pet_name str) list
+        +get_conflicts() list
     }
 
     Owner "1" --> "1..*" Pet : owns
