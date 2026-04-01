@@ -1,12 +1,7 @@
 """
 PawPal+ – backend logic layer.
 
-Classes
--------
-Owner      – the human caring for the pet(s)
-Pet        – a single pet with its own task list
-Task       – one care item (walk, feed, meds, …)
-Scheduler  – builds and explains a daily plan for one Owner + Pet pair
+Classes: Owner, Pet, Task, Scheduler
 
 UML (Mermaid):
 
@@ -74,7 +69,7 @@ from pathlib import Path
 
 _PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
-# Weight tables for Challenge 1 – weighted prioritization
+# Weights used by build_weighted_plan()
 _PRIORITY_WEIGHT  = {"high": 10, "medium": 6, "low": 2}
 _FREQUENCY_WEIGHT = {"daily": 3, "weekly": 2, "once": 1}
 _CATEGORY_WEIGHT  = {
@@ -94,27 +89,25 @@ _CATEGORY_WEIGHT  = {
 
 @dataclass
 class Task:
-    """A single pet-care item (walk, feeding, meds, etc.)."""
+    """A single care item (walk, feeding, meds, etc.)."""
 
     title: str
     duration_minutes: int
-    priority: str           # "low" | "medium" | "high"
+    priority: str        # "high" | "medium" | "low"
     category: str = "general"
     completed: bool = False
-    frequency: str = "daily"   # "once" | "daily" | "weekly"
-
-    # ── state ──────────────────────────────────────────────────────────────
+    frequency: str = "daily"  # "daily" | "weekly" | "once"
 
     def mark_complete(self) -> None:
-        """Mark this task as done for the day."""
+        """Mark as done."""
         self.completed = True
 
     def reset(self) -> None:
-        """Clear completion status so the task is fresh for a new day."""
+        """Clear completed status."""
         self.completed = False
 
     def next_occurrence(self) -> "Task":
-        """Return a fresh copy of this task for the next occurrence (completed=False)."""
+        """Return a copy of this task with completed=False."""
         return Task(
             title=self.title,
             duration_minutes=self.duration_minutes,
@@ -124,25 +117,16 @@ class Task:
             frequency=self.frequency,
         )
 
-    # ── weighted score (Challenge 1) ────────────────────────────────────────
-
     def weight(self) -> int:
-        """
-        Compute a composite urgency score combining priority, frequency, and category.
-
-        Higher score = should be scheduled sooner.
-        Formula: priority_weight + frequency_weight + category_weight
-        """
+        """Return a score based on priority + frequency + category."""
         return (
             _PRIORITY_WEIGHT.get(self.priority, 0)
             + _FREQUENCY_WEIGHT.get(self.frequency, 0)
             + _CATEGORY_WEIGHT.get(self.category, 0)
         )
 
-    # ── serialisation (Challenge 2) ────────────────────────────────────────
-
     def to_dict(self) -> dict:
-        """Serialise this task to a plain dictionary."""
+        """Convert to a plain dictionary."""
         return {
             "title":            self.title,
             "duration_minutes": self.duration_minutes,
@@ -154,7 +138,7 @@ class Task:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Task":
-        """Deserialise a Task from a dictionary."""
+        """Create a Task from a dictionary."""
         return cls(
             title=data["title"],
             duration_minutes=data["duration_minutes"],
@@ -171,30 +155,28 @@ class Task:
 
 @dataclass
 class Pet:
-    """Represents a single pet and owns its list of care tasks."""
+    """A pet with a list of care tasks."""
 
     name: str
-    species: str            # "dog" | "cat" | "other"
+    species: str  # "dog" | "cat" | "other"
     age_years: int = 0
     notes: str = ""
     tasks: list[Task] = field(default_factory=list)
 
     def add_task(self, task: Task) -> None:
-        """Append a new care task to this pet's task list."""
+        """Add a task."""
         self.tasks.append(task)
 
     def remove_task(self, title: str) -> None:
-        """Remove the first task whose title matches (case-insensitive)."""
+        """Remove a task by title (case-insensitive)."""
         self.tasks = [t for t in self.tasks if t.title.lower() != title.lower()]
 
     def get_tasks(self) -> list[Task]:
-        """Return a copy of this pet's task list."""
+        """Return a copy of the task list."""
         return list(self.tasks)
 
-    # ── serialisation (Challenge 2) ────────────────────────────────────────
-
     def to_dict(self) -> dict:
-        """Serialise this pet to a plain dictionary."""
+        """Convert to a plain dictionary."""
         return {
             "name":      self.name,
             "species":   self.species,
@@ -205,7 +187,7 @@ class Pet:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Pet":
-        """Deserialise a Pet (and its tasks) from a dictionary."""
+        """Create a Pet (and its tasks) from a dictionary."""
         pet = cls(
             name=data["name"],
             species=data["species"],
@@ -223,15 +205,15 @@ class Pet:
 
 @dataclass
 class Owner:
-    """Represents the pet owner and aggregates all their pets."""
+    """The pet owner — holds pets and a daily time budget."""
 
     name: str
-    available_minutes: int = 60     # total time budget for the day
+    available_minutes: int = 60
     preferences: list[str] = field(default_factory=list)
     _pets: list[Pet] = field(default_factory=list, repr=False)
 
     def add_pet(self, pet: Pet) -> None:
-        """Register a pet under this owner."""
+        """Add a pet."""
         self._pets.append(pet)
 
     def remove_pet(self, pet_name: str) -> None:
@@ -239,20 +221,18 @@ class Owner:
         self._pets = [p for p in self._pets if p.name.lower() != pet_name.lower()]
 
     def get_pets(self) -> list[Pet]:
-        """Return a copy of the owner's pet list."""
+        """Return a copy of the pet list."""
         return list(self._pets)
 
     def get_all_tasks(self) -> list[Task]:
-        """Collect and return every task across all pets."""
+        """Return all tasks across all pets."""
         all_tasks: list[Task] = []
         for pet in self._pets:
             all_tasks.extend(pet.get_tasks())
         return all_tasks
 
-    # ── serialisation (Challenge 2) ────────────────────────────────────────
-
     def to_dict(self) -> dict:
-        """Serialise this owner (and all pets/tasks) to a plain dictionary."""
+        """Convert to a plain dictionary."""
         return {
             "name":              self.name,
             "available_minutes": self.available_minutes,
@@ -261,14 +241,14 @@ class Owner:
         }
 
     def save_to_json(self, filepath: str = "data.json") -> None:
-        """Persist the owner, pets, and tasks to a JSON file."""
+        """Save to a JSON file."""
         Path(filepath).write_text(
             json.dumps(self.to_dict(), indent=2), encoding="utf-8"
         )
 
     @classmethod
     def from_dict(cls, data: dict) -> "Owner":
-        """Deserialise an Owner (and all pets/tasks) from a dictionary."""
+        """Create an Owner (and all pets/tasks) from a dictionary."""
         owner = cls(
             name=data["name"],
             available_minutes=data.get("available_minutes", 60),
@@ -280,11 +260,7 @@ class Owner:
 
     @classmethod
     def load_from_json(cls, filepath: str = "data.json") -> "Owner | None":
-        """
-        Load an Owner from a JSON file.
-
-        Returns None if the file does not exist (first run).
-        """
+        """Load from a JSON file. Returns None if the file doesn't exist."""
         p = Path(filepath)
         if not p.exists():
             return None
@@ -297,46 +273,33 @@ class Owner:
 
 @dataclass
 class Scheduler:
-    """Builds a prioritised daily care plan for one Owner + Pet pair."""
+    """Builds a daily care plan for one Owner + Pet pair."""
 
     owner: Owner
     pet: Pet
-    time_budget_minutes: int = 0    # 0 means use owner.available_minutes
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+    time_budget_minutes: int = 0  # 0 = use owner.available_minutes
 
     def _effective_budget(self) -> int:
-        """Return the active time budget (explicit override or owner's budget)."""
+        """Return the time budget to use."""
         return self.time_budget_minutes if self.time_budget_minutes > 0 else self.owner.available_minutes
 
     def _sorted_tasks(self) -> list[Task]:
-        """Return incomplete tasks sorted high → medium → low priority."""
+        """Return incomplete tasks sorted high → medium → low."""
         return sorted(
             [t for t in self.pet.get_tasks() if not t.completed],
             key=lambda t: _PRIORITY_ORDER.get(t.priority, 99),
         )
 
     def _weighted_tasks(self) -> list[Task]:
-        """Return incomplete tasks sorted by composite weight score (descending)."""
+        """Return incomplete tasks sorted by weight score, highest first."""
         return sorted(
             [t for t in self.pet.get_tasks() if not t.completed],
             key=lambda t: t.weight(),
             reverse=True,
         )
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def build_plan(self) -> list[Task]:
-        """
-        Greedily select tasks that fit within the time budget (priority order).
-
-        Tasks are sorted high → medium → low. Each task is included if its
-        duration fits in the remaining budget. Returns the ordered list.
-        """
+        """Select tasks by priority order until the time budget is used up."""
         budget = self._effective_budget()
         plan: list[Task] = []
         remaining = budget
@@ -348,17 +311,10 @@ class Scheduler:
 
     def build_weighted_plan(self) -> list[Task]:
         """
-        Challenge 1 – Weighted prioritization scheduler.
+        Select tasks by weight score until the time budget is used up.
 
-        Each task receives a composite urgency score:
-            score = priority_weight + frequency_weight + category_weight
-
-        Examples:
-            daily medication (high)  → 10 + 3 + 4 = 17  (scheduled first)
-            weekly grooming  (low)   →  2 + 2 + 0 =  4  (scheduled last)
-
-        Tasks are greedy-selected in descending score order within the time
-        budget, giving smarter ordering than a simple high/medium/low sort.
+        Score = priority_weight + frequency_weight + category_weight.
+        Higher score means the task is scheduled first.
         """
         budget = self._effective_budget()
         plan: list[Task] = []
@@ -373,12 +329,8 @@ class Scheduler:
         """
         Return tasks filtered by completion status and/or pet name.
 
-        Parameters
-        ----------
-        completed : bool | None
-            True → completed only, False → incomplete only, None → all.
-        pet_name : str | None
-            Scope to a specific pet (case-insensitive). Defaults to this pet.
+        completed: True = done only, False = pending only, None = all.
+        pet_name: filter to a specific pet (defaults to the scheduler's pet).
         """
         source_pet = self.pet
         if pet_name is not None and pet_name.lower() != self.pet.name.lower():
@@ -395,11 +347,7 @@ class Scheduler:
         return tasks
 
     def get_conflicts(self) -> list[tuple[Task, Task]]:
-        """
-        Return pairs of tasks that share the same title (case-insensitive).
-
-        Duplicate titles cause the same activity to appear twice in the schedule.
-        """
+        """Return pairs of tasks with the same title (case-insensitive)."""
         tasks = self.pet.get_tasks()
         seen: dict[str, Task] = {}
         conflicts: list[tuple[Task, Task]] = []
@@ -412,21 +360,16 @@ class Scheduler:
         return conflicts
 
     def explain_plan(self, plan: list[Task], weighted: bool = False) -> str:
-        """
-        Return a formatted, human-readable explanation of the daily plan.
-
-        Shows each task with start/end times, duration, priority, and score
-        (when weighted=True). Tasks are assumed to start back-to-back from 08:00.
-        """
+        """Print a timed summary of the plan. Tasks start back-to-back from 08:00."""
         if not plan:
             return "No tasks fit within today's time budget."
 
         budget = self._effective_budget()
-        total_scheduled = sum(t.duration_minutes for t in plan)
+        total = sum(t.duration_minutes for t in plan)
         mode = "weighted score" if weighted else "priority"
         lines: list[str] = [
             f"Daily plan for {self.pet.name} ({self.owner.name})  [{mode} mode]",
-            f"Time budget: {budget} min  |  Scheduled: {total_scheduled} min",
+            f"Budget: {budget} min  |  Scheduled: {total} min",
             "-" * 55,
         ]
 
@@ -447,8 +390,8 @@ class Scheduler:
         lines.append("-" * 55)
         skipped = [t for t in self.pet.get_tasks() if t not in plan and not t.completed]
         if skipped:
-            lines.append("Skipped (did not fit in budget):")
+            lines.append("Skipped (did not fit):")
             for t in skipped:
-                lines.append(f"  • {t.title} ({t.duration_minutes} min, priority={t.priority})")
+                lines.append(f"  • {t.title} ({t.duration_minutes} min, {t.priority})")
 
         return "\n".join(lines)

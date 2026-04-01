@@ -1,9 +1,5 @@
 """
-main.py – demo / smoke-test script for PawPal+ logic.
-
-Demonstrates: weighted scheduling, priority sorting, filtering,
-conflict detection, recurrence, JSON persistence, and tabulate CLI output.
-
+main.py – demo script for PawPal+ logic.
 Run with:  python main.py
 """
 
@@ -21,14 +17,14 @@ def section(title: str) -> None:
 
 
 def main() -> None:
-    # ── Owner + pets ───────────────────────────────────────────────────────
+    # Set up owner and pets
     jordan = Owner(name="Jordan", available_minutes=90)
     mochi  = Pet(name="Mochi", species="dog", age_years=3)
     luna   = Pet(name="Luna",  species="cat", age_years=5)
     jordan.add_pet(mochi)
     jordan.add_pet(luna)
 
-    # Tasks added out of order (low priority first) to prove sorting works
+    # Add tasks out of order to show sorting works
     mochi.add_task(Task("Grooming brush", 15, "low",    "grooming",    frequency="weekly"))
     mochi.add_task(Task("Fetch / play",   20, "medium", "enrichment",  frequency="daily"))
     mochi.add_task(Task("Medication",     10, "high",   "medication",  frequency="daily"))
@@ -39,8 +35,8 @@ def main() -> None:
     luna.add_task(Task("Litter box",        5, "high",   "hygiene",    frequency="daily"))
     luna.add_task(Task("Breakfast",         5, "high",   "feeding",    frequency="daily"))
 
-    # ── 1. Priority-based schedule ─────────────────────────────────────────
-    section("1. Priority-based schedule (high → medium → low)")
+    # 1. Priority schedule
+    section("1. Priority schedule (high → medium → low)")
     for pet in jordan.get_pets():
         s    = Scheduler(owner=jordan, pet=pet)
         plan = s.build_plan()
@@ -58,8 +54,8 @@ def main() -> None:
         print(tabulate(rows, headers=["Time", "Priority", "Task", "Category", "Min", "Freq"],
                        tablefmt="rounded_outline"))
 
-    # ── 2. Weighted schedule ───────────────────────────────────────────────
-    section("2. Weighted schedule (priority + frequency + category score)")
+    # 2. Weighted schedule
+    section("2. Weighted schedule (priority + frequency + category)")
     s    = Scheduler(owner=jordan, pet=mochi)
     plan = s.build_weighted_plan()
     rows = []
@@ -76,26 +72,26 @@ def main() -> None:
     print(tabulate(rows, headers=["Time", "Score", "Priority", "Task", "Category", "Min"],
                    tablefmt="rounded_outline"))
 
-    # ── 3. Filtering ───────────────────────────────────────────────────────
-    section("3. Filtering demo")
-    mochi.tasks[2].mark_complete()   # mark Medication done
+    # 3. Filtering
+    section("3. Filtering")
+    mochi.tasks[2].mark_complete()  # mark Medication done
     incomplete = s.filter_tasks(completed=False)
     done       = s.filter_tasks(completed=True)
     print(f"\nIncomplete ({len(incomplete)}): {[t.title for t in incomplete]}")
     print(f"Completed  ({len(done)}):   {[t.title for t in done]}")
 
-    # ── 4. Conflict detection ──────────────────────────────────────────────
-    section("4. Conflict detection demo")
-    mochi.add_task(Task("Morning walk", 30, "high", "exercise"))   # duplicate
+    # 4. Conflict detection
+    section("4. Conflict detection")
+    mochi.add_task(Task("Morning walk", 30, "high", "exercise"))  # duplicate
     for t1, t2 in Scheduler(owner=jordan, pet=mochi).get_conflicts():
-        print(f"  ⚠  Conflict: '{t1.title}' appears twice on {mochi.name}'s list")
+        print(f"  ⚠  '{t1.title}' appears twice on {mochi.name}'s list")
     mochi.remove_task("Morning walk")
     mochi.remove_task("Morning walk")
     mochi.add_task(Task("Morning walk", 30, "high", "exercise", frequency="daily"))
     print("  Resolved.")
 
-    # ── 5. Recurrence ─────────────────────────────────────────────────────
-    section("5. Recurrence demo")
+    # 5. Recurrence
+    section("5. Recurrence")
     walk = next(t for t in mochi.get_tasks() if t.title == "Morning walk")
     walk.mark_complete()
     nxt = walk.next_occurrence()
@@ -106,21 +102,21 @@ def main() -> None:
         tablefmt="rounded_outline",
     ))
 
-    # ── 6. JSON persistence ────────────────────────────────────────────────
-    section("6. JSON persistence (Challenge 2)")
+    # 6. JSON persistence
+    section("6. JSON persistence")
     jordan.save_to_json(DATA_FILE)
     print(f"  Saved to {DATA_FILE}")
     loaded = Owner.load_from_json(DATA_FILE)
-    print(f"  Loaded:  {loaded.name}, {len(loaded.get_pets())} pets, "
+    print(f"  Loaded: {loaded.name}, {len(loaded.get_pets())} pets, "
           f"{len(loaded.get_all_tasks())} tasks")
 
-    # ── 7. Summary ────────────────────────────────────────────────────────
+    # 7. Summary
     section("7. Summary")
     all_tasks = jordan.get_all_tasks()
     print(tabulate(
         [[jordan.name, jordan.available_minutes, len(jordan.get_pets()),
           len(all_tasks), sum(t.duration_minutes for t in all_tasks)]],
-        headers=["Owner", "Budget (min)", "Pets", "Total tasks", "Total care time (min)"],
+        headers=["Owner", "Budget (min)", "Pets", "Tasks", "Total time (min)"],
         tablefmt="rounded_outline",
     ))
 
