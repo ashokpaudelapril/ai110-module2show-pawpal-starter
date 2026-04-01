@@ -193,10 +193,12 @@ GPT-4o's approach: adds a `due_date` field to `Task` and computes `today + 7 day
 
 **Which was kept and why:** Claude's version was used in the final implementation. At the time of the decision, PawPal+ had no date-based sorting and the UI doesn't display due dates — adding `due_date` to `Task` would have required updating `to_dict()`, `from_dict()`, the Streamlit form, the test fixtures, and the `main.py` demo. The added complexity wasn't justified by a feature the app doesn't yet use.
 
-GPT-4o's version would be more useful if the app ever adds a calendar view. The decision to use Claude's simpler version was about keeping scope small, not a judgment on quality.
+GPT-4o's version is the better long-term design if PawPal+ ever adds a calendar view or multi-day planning. The `due_date` field and `None`-on-once behaviour are both strictly more correct. The decision to defer it was about scope, not quality.
+
+**Key insight:** Both models produced working code. The architectural question — does `Task` own its schedule date? — is a design decision that neither model can make. That required human judgment about the current scope of the project.
 
 ---
 
 **c. Key takeaway**
 
-AI tools sped up the coding but couldn't make design decisions — where to put `get_all_tasks()`, why greedy is good enough here, or which edge cases matter. Those still required thinking through the problem first.
+The most important insight from this project: **AI is a fast first-drafter, but the architect role belongs to the developer.** AI could generate a working scheduler in minutes, but it could not decide *where* `get_all_tasks()` should live, *why* greedy-over-knapsack is the right tradeoff for this use case, or *what* edge cases actually matter for a pet owner's daily routine. Every meaningful design decision required human judgment — the AI just removed the friction of translating those decisions into code.
