@@ -73,6 +73,7 @@ class Task:
     priority: str           # "low" | "medium" | "high"
     category: str = "general"
     completed: bool = False
+    frequency: str = "daily"   # "once" | "daily" | "weekly"
 
     def mark_complete(self) -> None:
         """Mark this task as done for the day."""
@@ -81,6 +82,17 @@ class Task:
     def reset(self) -> None:
         """Clear completion status so the task is fresh for a new day."""
         self.completed = False
+
+    def next_occurrence(self) -> "Task":
+        """Return a fresh copy of this task for the next occurrence (completed=False)."""
+        return Task(
+            title=self.title,
+            duration_minutes=self.duration_minutes,
+            priority=self.priority,
+            category=self.category,
+            completed=False,
+            frequency=self.frequency,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +204,24 @@ class Scheduler:
                 remaining -= task.duration_minutes
 
         return plan
+
+    def get_conflicts(self) -> list[tuple[Task, Task]]:
+        """
+        Return pairs of tasks that share the same title (case-insensitive).
+
+        Duplicate titles indicate the same care activity was added twice,
+        which would cause it to appear twice in the schedule.
+        """
+        tasks = self.pet.get_tasks()
+        seen: dict[str, Task] = {}
+        conflicts: list[tuple[Task, Task]] = []
+        for task in tasks:
+            key = task.title.lower()
+            if key in seen:
+                conflicts.append((seen[key], task))
+            else:
+                seen[key] = task
+        return conflicts
 
     def explain_plan(self, plan: list[Task]) -> str:
         """
