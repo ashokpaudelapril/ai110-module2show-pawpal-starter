@@ -104,11 +104,11 @@ pip install -r requirements.txt
 
 PawPal+'s scheduling goes beyond a simple to-do list:
 
-- **Priority sorting** — tasks are always evaluated high → medium → low. A medication task will never be bumped by a grooming session.
+- **Priority sorting** — tasks are evaluated high → medium → low, so higher-priority care is scheduled before lower-priority tasks.
 - **Greedy budget enforcement** — the scheduler fills available time without ever overcommitting. If a 30-minute walk and a 20-minute play session both fit but you only have 40 minutes, the walk wins (higher priority) and the remaining 10 minutes stay free.
 - **Filtering** — `Scheduler.filter_tasks(completed=False)` returns only pending tasks; `filter_tasks(pet_name="Luna")` scopes to a specific pet. Both filters can be combined.
 - **Conflict detection** — `Scheduler.get_conflicts()` finds duplicate task titles before the plan is built, preventing silent double-scheduling.
-- **Daily recurrence** — marking a `daily` or `weekly` task complete triggers `next_occurrence()`, which instantly queues a fresh copy so the pet's routine is never broken.
+- **Daily recurrence** — marking a `daily` or `weekly` task complete triggers `next_occurrence()`, which queues a fresh copy for the next cycle.
 
 ## Testing PawPal+
 
