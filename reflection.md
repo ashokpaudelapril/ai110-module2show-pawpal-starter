@@ -120,6 +120,85 @@ The layered architecture (Task → Pet → Owner → Scheduler) made each phase 
 
 The current scheduler makes one pass and stops. A second pass (trying to fill remaining budget gaps with lower-priority tasks that fit) would improve utilisation without breaking the priority ordering guarantee. I would also move the time-slot calculation logic (the `08:00` running clock) out of `explain_plan()` and `app.py` into a dedicated `Scheduler._assign_times()` method so it is testable and reusable.
 
+---
+
+## 6. Prompt Comparison (Challenge 5)
+
+**Task chosen:** Implement the logic for rescheduling weekly tasks — specifically, when a `weekly` task is marked complete, how should the system calculate and schedule the next occurrence?
+
+**Prompt used (identical for both models):**
+> "Given a `Task` dataclass with fields `title`, `duration_minutes`, `priority`, `category`, `completed`, and `frequency` ('once'/'daily'/'weekly'), write a method `next_occurrence()` that returns a new Task instance representing the next scheduled occurrence. For weekly tasks, the new task should not be completed and should preserve all other fields. How should the method handle the 'once' frequency?"
+
+---
+
+**Claude (claude-sonnet-4-6) response:**
+
+```python
+def next_occurrence(self) -> "Task":
+    return Task(
+        title=self.title,
+        duration_minutes=self.duration_minutes,
+        priority=self.priority,
+        category=self.category,
+        completed=False,
+        frequency=self.frequency,
+    )
+```
+
+Claude's approach: a simple factory method that returns a fresh copy with `completed=False`. It left the `once` frequency decision to the caller — the method always produces a copy regardless of frequency, and the calling code (UI or `main.py`) decides whether to actually add it.
+
+---
+
+**GPT-4o response:**
+
+```python
+from datetime import date, timedelta
+from dataclasses import dataclass, field
+from typing import Optional
+
+@dataclass
+class Task:
+    ...
+    due_date: Optional[date] = None
+
+    def next_occurrence(self) -> Optional["Task"]:
+        if self.frequency == "once":
+            return None  # no recurrence
+        delta = timedelta(days=1 if self.frequency == "daily" else 7)
+        next_due = (self.due_date or date.today()) + delta
+        return Task(
+            title=self.title,
+            duration_minutes=self.duration_minutes,
+            priority=self.priority,
+            category=self.category,
+            completed=False,
+            frequency=self.frequency,
+            due_date=next_due,
+        )
+```
+
+GPT-4o's approach: adds a `due_date` field to `Task` and computes `today + 7 days` for weekly tasks. Returns `None` for `once` tasks. More date-aware but requires a schema change.
+
+---
+
+**Comparison and decision:**
+
+| Dimension | Claude | GPT-4o |
+|---|---|---|
+| Schema change required | None | Adds `due_date` to `Task` |
+| Handles `once` frequency | Caller decides | Returns `None` |
+| Date arithmetic | Not included | `timedelta` built in |
+| Simplicity | High | Moderate |
+| Future-proofness | Low (no dates) | High (due dates enable sorting) |
+
+**Which was kept and why:** Claude's version was used in the final implementation. At the time of the decision, PawPal+ had no date-based sorting and the UI doesn't display due dates — adding `due_date` to `Task` would have required updating `to_dict()`, `from_dict()`, the Streamlit form, the test fixtures, and the `main.py` demo. The added complexity wasn't justified by a feature the app doesn't yet use.
+
+GPT-4o's version is the better long-term design if PawPal+ ever adds a calendar view or multi-day planning. The `due_date` field and `None`-on-once behaviour are both strictly more correct. The decision to defer it was about scope, not quality.
+
+**Key insight:** Both models produced working code. The architectural question — does `Task` own its schedule date? — is a design decision that neither model can make. That required human judgment about the current scope of the project.
+
+---
+
 **c. Key takeaway**
 
 The most important insight from this project: **AI is a fast first-drafter, but the architect role belongs to the developer.** AI could generate a working scheduler in minutes, but it could not decide *where* `get_all_tasks()` should live, *why* greedy-over-knapsack is the right tradeoff for this use case, or *what* edge cases actually matter for a pet owner's daily routine. Every meaningful design decision required human judgment — the AI just removed the friction of translating those decisions into code.

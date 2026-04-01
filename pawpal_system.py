@@ -19,6 +19,10 @@ classDiagram
         +remove_pet(pet_name str) None
         +get_pets() list
         +get_all_tasks() list
+        +to_dict() dict
+        +save_to_json(filepath str) None
+        +from_dict(data dict) Owner
+        +load_from_json(filepath str) Owner
     }
     class Pet {
         +str name
@@ -29,6 +33,8 @@ classDiagram
         +add_task(task Task) None
         +remove_task(title str) None
         +get_tasks() list
+        +to_dict() dict
+        +from_dict(data dict) Pet
     }
     class Task {
         +str title
@@ -40,12 +46,15 @@ classDiagram
         +mark_complete() None
         +reset() None
         +next_occurrence() Task
+        +to_dict() dict
+        +from_dict(data dict) Task
     }
     class Scheduler {
         +Owner owner
         +Pet pet
         +int time_budget_minutes
         +build_plan() list
+        +build_weighted_plan() list
         +explain_plan(plan list) str
         +filter_tasks(completed bool, pet_name str) list
         +get_conflicts() list
@@ -59,9 +68,24 @@ classDiagram
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 
 _PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+
+# Weight tables for Challenge 1 – weighted prioritization
+_PRIORITY_WEIGHT  = {"high": 10, "medium": 6, "low": 2}
+_FREQUENCY_WEIGHT = {"daily": 3, "weekly": 2, "once": 1}
+_CATEGORY_WEIGHT  = {
+    "medication": 4,
+    "feeding":    3,
+    "hygiene":    3,
+    "exercise":   2,
+    "enrichment": 1,
+    "grooming":   0,
+    "general":    0,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +102,8 @@ class Task:
     category: str = "general"
     completed: bool = False
     frequency: str = "daily"   # "once" | "daily" | "weekly"
+
+    # ── state ──────────────────────────────────────────────────────────────
 
     def mark_complete(self) -> None:
         """Mark this task as done for the day."""
@@ -96,6 +122,46 @@ class Task:
             category=self.category,
             completed=False,
             frequency=self.frequency,
+        )
+
+    # ── weighted score (Challenge 1) ────────────────────────────────────────
+
+    def weight(self) -> int:
+        """
+        Compute a composite urgency score combining priority, frequency, and category.
+
+        Higher score = should be scheduled sooner.
+        Formula: priority_weight + frequency_weight + category_weight
+        """
+        return (
+            _PRIORITY_WEIGHT.get(self.priority, 0)
+            + _FREQUENCY_WEIGHT.get(self.frequency, 0)
+            + _CATEGORY_WEIGHT.get(self.category, 0)
+        )
+
+    # ── serialisation (Challenge 2) ────────────────────────────────────────
+
+    def to_dict(self) -> dict:
+        """Serialise this task to a plain dictionary."""
+        return {
+            "title":            self.title,
+            "duration_minutes": self.duration_minutes,
+            "priority":         self.priority,
+            "category":         self.category,
+            "completed":        self.completed,
+            "frequency":        self.frequency,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Task":
+        """Deserialise a Task from a dictionary."""
+        return cls(
+            title=data["title"],
+            duration_minutes=data["duration_minutes"],
+            priority=data["priority"],
+            category=data.get("category", "general"),
+            completed=data.get("completed", False),
+            frequency=data.get("frequency", "daily"),
         )
 
 
@@ -124,6 +190,31 @@ class Pet:
     def get_tasks(self) -> list[Task]:
         """Return a copy of this pet's task list."""
         return list(self.tasks)
+
+    # ── serialisation (Challenge 2) ────────────────────────────────────────
+
+    def to_dict(self) -> dict:
+        """Serialise this pet to a plain dictionary."""
+        return {
+            "name":      self.name,
+            "species":   self.species,
+            "age_years": self.age_years,
+            "notes":     self.notes,
+            "tasks":     [t.to_dict() for t in self.tasks],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Pet":
+        """Deserialise a Pet (and its tasks) from a dictionary."""
+        pet = cls(
+            name=data["name"],
+            species=data["species"],
+            age_years=data.get("age_years", 0),
+            notes=data.get("notes", ""),
+        )
+        for td in data.get("tasks", []):
+            pet.add_task(Task.from_dict(td))
+        return pet
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +249,47 @@ class Owner:
             all_tasks.extend(pet.get_tasks())
         return all_tasks
 
+    # ── serialisation (Challenge 2) ────────────────────────────────────────
+
+    def to_dict(self) -> dict:
+        """Serialise this owner (and all pets/tasks) to a plain dictionary."""
+        return {
+            "name":              self.name,
+            "available_minutes": self.available_minutes,
+            "preferences":       list(self.preferences),
+            "pets":              [p.to_dict() for p in self._pets],
+        }
+
+    def save_to_json(self, filepath: str = "data.json") -> None:
+        """Persist the owner, pets, and tasks to a JSON file."""
+        Path(filepath).write_text(
+            json.dumps(self.to_dict(), indent=2), encoding="utf-8"
+        )
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Owner":
+        """Deserialise an Owner (and all pets/tasks) from a dictionary."""
+        owner = cls(
+            name=data["name"],
+            available_minutes=data.get("available_minutes", 60),
+            preferences=data.get("preferences", []),
+        )
+        for pd in data.get("pets", []):
+            owner.add_pet(Pet.from_dict(pd))
+        return owner
+
+    @classmethod
+    def load_from_json(cls, filepath: str = "data.json") -> "Owner | None":
+        """
+        Load an Owner from a JSON file.
+
+        Returns None if the file does not exist (first run).
+        """
+        p = Path(filepath)
+        if not p.exists():
+            return None
+        return cls.from_dict(json.loads(p.read_text(encoding="utf-8")))
+
 
 # ---------------------------------------------------------------------------
 # Scheduler
@@ -180,10 +312,18 @@ class Scheduler:
         return self.time_budget_minutes if self.time_budget_minutes > 0 else self.owner.available_minutes
 
     def _sorted_tasks(self) -> list[Task]:
-        """Return the pet's tasks sorted high → medium → low, skipping completed ones."""
+        """Return incomplete tasks sorted high → medium → low priority."""
         return sorted(
             [t for t in self.pet.get_tasks() if not t.completed],
             key=lambda t: _PRIORITY_ORDER.get(t.priority, 99),
+        )
+
+    def _weighted_tasks(self) -> list[Task]:
+        """Return incomplete tasks sorted by composite weight score (descending)."""
+        return sorted(
+            [t for t in self.pet.get_tasks() if not t.completed],
+            key=lambda t: t.weight(),
+            reverse=True,
         )
 
     # ------------------------------------------------------------------
@@ -192,21 +332,41 @@ class Scheduler:
 
     def build_plan(self) -> list[Task]:
         """
-        Greedily select tasks that fit within the time budget.
+        Greedily select tasks that fit within the time budget (priority order).
 
-        Tasks are considered in priority order (high first). Each task is
-        included if its duration fits in the remaining time.  Returns the
-        ordered list of selected tasks.
+        Tasks are sorted high → medium → low. Each task is included if its
+        duration fits in the remaining budget. Returns the ordered list.
         """
         budget = self._effective_budget()
         plan: list[Task] = []
         remaining = budget
-
         for task in self._sorted_tasks():
             if task.duration_minutes <= remaining:
                 plan.append(task)
                 remaining -= task.duration_minutes
+        return plan
 
+    def build_weighted_plan(self) -> list[Task]:
+        """
+        Challenge 1 – Weighted prioritization scheduler.
+
+        Each task receives a composite urgency score:
+            score = priority_weight + frequency_weight + category_weight
+
+        Examples:
+            daily medication (high)  → 10 + 3 + 4 = 17  (scheduled first)
+            weekly grooming  (low)   →  2 + 2 + 0 =  4  (scheduled last)
+
+        Tasks are greedy-selected in descending score order within the time
+        budget, giving smarter ordering than a simple high/medium/low sort.
+        """
+        budget = self._effective_budget()
+        plan: list[Task] = []
+        remaining = budget
+        for task in self._weighted_tasks():
+            if task.duration_minutes <= remaining:
+                plan.append(task)
+                remaining -= task.duration_minutes
         return plan
 
     def filter_tasks(self, *, completed: bool | None = None, pet_name: str | None = None) -> list[Task]:
@@ -216,16 +376,12 @@ class Scheduler:
         Parameters
         ----------
         completed : bool | None
-            If True, return only completed tasks.
-            If False, return only incomplete tasks.
-            If None (default), return all tasks regardless of status.
+            True → completed only, False → incomplete only, None → all.
         pet_name : str | None
-            If provided, only return tasks whose pet name matches (case-insensitive).
-            If None, uses the Scheduler's own pet.
+            Scope to a specific pet (case-insensitive). Defaults to this pet.
         """
         source_pet = self.pet
         if pet_name is not None and pet_name.lower() != self.pet.name.lower():
-            # Caller asked for a different pet — look it up through the owner
             match = next(
                 (p for p in self.owner.get_pets() if p.name.lower() == pet_name.lower()), None
             )
@@ -242,8 +398,7 @@ class Scheduler:
         """
         Return pairs of tasks that share the same title (case-insensitive).
 
-        Duplicate titles indicate the same care activity was added twice,
-        which would cause it to appear twice in the schedule.
+        Duplicate titles cause the same activity to appear twice in the schedule.
         """
         tasks = self.pet.get_tasks()
         seen: dict[str, Task] = {}
@@ -256,43 +411,40 @@ class Scheduler:
                 seen[key] = task
         return conflicts
 
-    def explain_plan(self, plan: list[Task]) -> str:
+    def explain_plan(self, plan: list[Task], weighted: bool = False) -> str:
         """
         Return a formatted, human-readable explanation of the daily plan.
 
-        Shows each task with its start time, duration, priority, and a brief
-        reason for its inclusion. Tasks are assumed to start back-to-back from
-        08:00.
+        Shows each task with start/end times, duration, priority, and score
+        (when weighted=True). Tasks are assumed to start back-to-back from 08:00.
         """
         if not plan:
             return "No tasks fit within today's time budget."
 
         budget = self._effective_budget()
         total_scheduled = sum(t.duration_minutes for t in plan)
+        mode = "weighted score" if weighted else "priority"
         lines: list[str] = [
-            f"Daily plan for {self.pet.name} ({self.owner.name})",
+            f"Daily plan for {self.pet.name} ({self.owner.name})  [{mode} mode]",
             f"Time budget: {budget} min  |  Scheduled: {total_scheduled} min",
-            "-" * 50,
+            "-" * 55,
         ]
 
-        # Walk through tasks, tracking a running clock from 08:00
         hour, minute = 8, 0
         for task in plan:
             start = f"{hour:02d}:{minute:02d}"
-            end_minute = minute + task.duration_minutes
-            end_hour = hour + end_minute // 60
-            end_minute = end_minute % 60
-            end = f"{end_hour:02d}:{end_minute:02d}"
-
-            reason = f"priority={task.priority}"
+            end_m = minute + task.duration_minutes
+            end_h = hour + end_m // 60
+            end_m = end_m % 60
+            end = f"{end_h:02d}:{end_m:02d}"
+            detail = f"score={task.weight()}" if weighted else f"priority={task.priority}"
             lines.append(
                 f"  {start}–{end}  [{task.category}]  {task.title}  "
-                f"({task.duration_minutes} min, {reason})"
+                f"({task.duration_minutes} min, {detail})"
             )
+            hour, minute = end_h, end_m
 
-            hour, minute = end_hour, end_minute
-
-        lines.append("-" * 50)
+        lines.append("-" * 55)
         skipped = [t for t in self.pet.get_tasks() if t not in plan and not t.completed]
         if skipped:
             lines.append("Skipped (did not fit in budget):")
