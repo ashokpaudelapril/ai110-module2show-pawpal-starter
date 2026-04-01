@@ -22,6 +22,23 @@ Your final app should:
 - Display the plan clearly (and ideally explain the reasoning)
 - Include tests for the most important scheduling behaviors
 
+## Features
+
+| Feature | Description |
+|---|---|
+| **Priority-sorted scheduling** | Tasks are ordered high → medium → low before selection. High-priority care (medication, feeding) is always scheduled before enrichment or grooming. |
+| **Greedy time-budget enforcement** | The scheduler fills the owner's daily time budget greedily, skipping tasks that don't fit rather than overcommitting. The budget is hard — the plan never exceeds it. |
+| **Conflict detection** | `Scheduler.get_conflicts()` flags duplicate task titles on the same pet, surfacing a warning in the UI before the schedule is generated. |
+| **Daily recurrence** | Tasks carry a `frequency` field (`daily`, `weekly`, `once`). When a recurring task is marked complete, `next_occurrence()` automatically queues a fresh copy for the next cycle. |
+| **Plain-language explanation** | `explain_plan()` produces a timed, annotated narrative of every scheduled task — including start/end times, category, and priority — so owners understand *why* the plan looks the way it does. |
+| **Multi-pet support** | An owner can register multiple pets. Each pet maintains its own task list; schedules are generated per pet. |
+
+## 📸 Demo
+
+*Add a screenshot of your running app here using the embed below:*
+
+<a href="/course_images/ai110/pawpal_screenshot.png" target="_blank"><img src='/course_images/ai110/pawpal_screenshot.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
+
 ## Getting started
 
 ### Setup

@@ -12,14 +12,14 @@ st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 # ---------------------------------------------------------------------------
 
 if "owner" not in st.session_state:
-    st.session_state.owner = None   # set once the user fills in the owner form
+    st.session_state.owner = None
 
 # ---------------------------------------------------------------------------
 # Header
 # ---------------------------------------------------------------------------
 
 st.title("🐾 PawPal+")
-st.caption("A daily pet-care planner powered by your own scheduling logic.")
+st.caption("A daily pet-care planner — priority-sorted scheduling with conflict detection.")
 
 # ---------------------------------------------------------------------------
 # Section 1 – Owner setup
@@ -38,12 +38,11 @@ with st.form("owner_form"):
     save_owner = st.form_submit_button("Save owner")
 
 if save_owner:
-    # Preserve existing pets if owner already existed
     existing_pets = st.session_state.owner.get_pets() if st.session_state.owner else []
     st.session_state.owner = Owner(name=owner_name, available_minutes=available_minutes)
     for pet in existing_pets:
         st.session_state.owner.add_pet(pet)
-    st.success(f"Owner saved: {owner_name} ({available_minutes} min today)")
+    st.success(f"Owner saved: **{owner_name}** — {available_minutes} min available today.")
 
 if st.session_state.owner is None:
     st.info("Fill in your name and save to get started.")
@@ -71,23 +70,23 @@ with st.form("add_pet_form"):
 if add_pet_btn:
     existing_names = [p.name.lower() for p in owner.get_pets()]
     if pet_name.lower() in existing_names:
-        st.warning(f"A pet named '{pet_name}' is already registered.")
+        st.warning(f"A pet named **{pet_name}** is already registered.")
     else:
         owner.add_pet(Pet(name=pet_name, species=species, age_years=age, notes=notes))
-        st.success(f"Added {species} '{pet_name}'!")
+        st.success(f"Added {species} **{pet_name}**!")
 
-# Show current pets
 pets = owner.get_pets()
 if pets:
     st.write(f"**Registered pets ({len(pets)}):**")
     for p in pets:
         badge = {"dog": "🐶", "cat": "🐱"}.get(p.species, "🐾")
-        st.write(f"  {badge} **{p.name}** — {p.species}, {p.age_years} yr  {('· ' + p.notes) if p.notes else ''}")
+        note_str = f" · *{p.notes}*" if p.notes else ""
+        st.write(f"  {badge} **{p.name}** — {p.species}, {p.age_years} yr{note_str}")
 else:
     st.info("No pets yet — add one above.")
 
 # ---------------------------------------------------------------------------
-# Section 3 – Add a task to a pet
+# Section 3 – Add a care task
 # ---------------------------------------------------------------------------
 
 st.header("3. Add a care task")
@@ -101,25 +100,47 @@ else:
             target_pet = st.selectbox("For which pet?", [p.name for p in pets])
         with col2:
             task_title = st.text_input("Task title", value="Morning walk")
-        col3, col4, col5 = st.columns(3)
+        col3, col4, col5, col6 = st.columns(4)
         with col3:
             duration = st.number_input("Duration (min)", min_value=1, max_value=240, value=20)
         with col4:
             priority = st.selectbox("Priority", ["high", "medium", "low"])
         with col5:
             category = st.selectbox(
-                "Category", ["exercise", "feeding", "enrichment", "grooming", "hygiene", "medication", "general"]
+                "Category",
+                ["exercise", "feeding", "enrichment", "grooming", "hygiene", "medication", "general"],
             )
+        with col6:
+            frequency = st.selectbox("Frequency", ["daily", "weekly", "once"])
         add_task_btn = st.form_submit_button("Add task")
 
     if add_task_btn:
         pet_obj = next(p for p in pets if p.name == target_pet)
         pet_obj.add_task(
-            Task(title=task_title, duration_minutes=int(duration), priority=priority, category=category)
+            Task(
+                title=task_title,
+                duration_minutes=int(duration),
+                priority=priority,
+                category=category,
+                frequency=frequency,
+            )
         )
-        st.success(f"Added '{task_title}' to {target_pet}.")
+        st.success(f"Added **{task_title}** to {target_pet}.")
 
-    # Show current task list grouped by pet
+    # ── Conflict warnings ────────────────────────────────────────────────
+    for pet in pets:
+        scheduler_check = Scheduler(owner=owner, pet=pet)
+        conflicts = scheduler_check.get_conflicts()
+        if conflicts:
+            for t1, t2 in conflicts:
+                st.warning(
+                    f"⚠️ **Conflict detected for {pet.name}:** "
+                    f"Two tasks share the name **\"{t1.title}\"**. "
+                    f"This may cause duplicate entries in the schedule. "
+                    f"Consider renaming or removing one."
+                )
+
+    # ── Task list grouped by pet ─────────────────────────────────────────
     st.write("**Current tasks:**")
     any_tasks = False
     for pet in pets:
@@ -127,17 +148,24 @@ else:
         if tasks:
             any_tasks = True
             st.write(f"*{pet.name}*")
+            priority_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}
             rows = [
-                {"Title": t.title, "Duration (min)": t.duration_minutes,
-                 "Priority": t.priority, "Category": t.category, "Done": t.completed}
-                for t in tasks
+                {
+                    "Priority": f"{priority_icon.get(t.priority, '')} {t.priority}",
+                    "Title": t.title,
+                    "Duration (min)": t.duration_minutes,
+                    "Category": t.category,
+                    "Frequency": t.frequency,
+                    "Done": "✓" if t.completed else "",
+                }
+                for t in sorted(tasks, key=lambda t: {"high": 0, "medium": 1, "low": 2}.get(t.priority, 9))
             ]
             st.table(rows)
     if not any_tasks:
         st.info("No tasks yet — add some above.")
 
 # ---------------------------------------------------------------------------
-# Section 4 – Generate the daily schedule
+# Section 4 – Generate today's schedule
 # ---------------------------------------------------------------------------
 
 st.header("4. Generate today's schedule")
@@ -150,16 +178,35 @@ else:
 
     if st.button("Generate schedule"):
         scheduler = Scheduler(owner=owner, pet=pet_to_schedule)
+
+        # ── Conflict check before generating ────────────────────────────
+        conflicts = scheduler.get_conflicts()
+        if conflicts:
+            for t1, t2 in conflicts:
+                st.warning(
+                    f"⚠️ **Scheduling conflict:** Task **\"{t1.title}\"** appears twice. "
+                    f"The first occurrence will be scheduled; the duplicate will be skipped."
+                )
+
         plan = scheduler.build_plan()
 
         if not plan:
-            st.warning("No tasks fit within today's time budget, or no tasks have been added yet.")
+            st.warning(
+                "No tasks could be scheduled. Either all tasks are already complete, "
+                "or none fit within today's time budget."
+            )
         else:
-            st.success(f"Scheduled {len(plan)} task(s) for {selected_pet_name}.")
+            total_min = sum(t.duration_minutes for t in plan)
+            budget = owner.available_minutes
+            st.success(
+                f"Scheduled **{len(plan)} task(s)** for {selected_pet_name} "
+                f"— {total_min} of {budget} minutes used."
+            )
 
-            # Display as a formatted table
+            # ── Sorted schedule table ────────────────────────────────────
             rows = []
             hour, minute = 8, 0
+            priority_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}
             for task in plan:
                 start = f"{hour:02d}:{minute:02d}"
                 end_m = minute + task.duration_minutes
@@ -168,25 +215,44 @@ else:
                 end = f"{end_h:02d}:{end_m:02d}"
                 rows.append({
                     "Time": f"{start} – {end}",
+                    "Priority": f"{priority_icon.get(task.priority, '')} {task.priority}",
                     "Task": task.title,
                     "Category": task.category,
                     "Duration (min)": task.duration_minutes,
-                    "Priority": task.priority,
+                    "Recurring": task.frequency,
                 })
                 hour, minute = end_h, end_m
 
             st.table(rows)
 
-            # Plain-language explanation
+            # ── Skipped tasks notice ─────────────────────────────────────
+            all_incomplete = [t for t in pet_to_schedule.get_tasks() if not t.completed]
+            skipped = [t for t in all_incomplete if t not in plan]
+            if skipped:
+                skipped_names = ", ".join(f"**{t.title}**" for t in skipped)
+                st.info(
+                    f"ℹ️ {len(skipped)} task(s) were skipped because they didn't fit "
+                    f"in today's time budget: {skipped_names}."
+                )
+
+            # ── Plain-language explanation ───────────────────────────────
             with st.expander("Why was this plan chosen?"):
                 st.text(scheduler.explain_plan(plan))
 
-            # Mark-complete buttons
+            # ── Mark-complete / recurrence ───────────────────────────────
             st.write("**Mark tasks complete:**")
             for task in plan:
                 if not task.completed:
                     if st.button(f"✅ Done: {task.title}", key=f"done_{task.title}"):
                         task.mark_complete()
+                        # For recurring tasks, add the next occurrence automatically
+                        if task.frequency in ("daily", "weekly"):
+                            pet_to_schedule.add_task(task.next_occurrence())
+                            st.toast(
+                                f"'{task.title}' marked done. "
+                                f"Next {task.frequency} occurrence added.",
+                                icon="🔁",
+                            )
                         st.rerun()
                 else:
                     st.write(f"~~{task.title}~~ ✓")

@@ -36,8 +36,10 @@ classDiagram
         +str priority
         +str category
         +bool completed
+        +str frequency
         +mark_complete() None
         +reset() None
+        +next_occurrence() Task
     }
     class Scheduler {
         +Owner owner
@@ -45,6 +47,7 @@ classDiagram
         +int time_budget_minutes
         +build_plan() list~Task~
         +explain_plan(plan: list~Task~) str
+        +get_conflicts() list~tuple~
     }
 
     Owner "1" --> "1..*" Pet : owns

@@ -28,7 +28,11 @@ Python dataclasses are used for `Task`, `Pet`, `Owner`, and `Scheduler` to keep 
 
 **b. Design changes**
 
-No changes yet — this section will be updated during implementation if the design evolves.
+Two additions were made during implementation that were not in the original UML:
+
+1. **`Task.frequency` + `Task.next_occurrence()`** — the initial design had no concept of recurrence. Adding `frequency: str ("daily"/"weekly"/"once")` and a `next_occurrence()` factory method allowed the UI to automatically queue the next instance of a recurring task when the owner marks it complete. This was added to `Task` (not `Scheduler`) because recurrence is a property of the task itself, not of how it is scheduled.
+
+2. **`Scheduler.get_conflicts()`** — conflict detection was not in the original design. It was added after recognising that duplicate task titles would silently appear twice in the schedule without warning. Placing it on `Scheduler` (rather than `Pet`) was a deliberate choice: `Pet` manages data, `Scheduler` manages scheduling concerns, and "is this a problem for the schedule?" is a scheduling concern.
 
 ---
 
@@ -36,13 +40,19 @@ No changes yet — this section will be updated during implementation if the des
 
 **a. Constraints and priorities**
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+The scheduler considers two constraints:
+
+- **Time budget** — `Owner.available_minutes` (or an explicit `Scheduler.time_budget_minutes` override) caps the total duration of the plan. This was treated as the hardest constraint: it is non-negotiable because the owner cannot create more time in a day.
+- **Priority** — tasks are sorted `high → medium → low` before greedy selection. Priority was chosen as the ordering signal because it directly encodes the owner's intent (medical tasks are high, enrichment is low).
+
+Preferences (`Owner.preferences`) are stored but not yet factored into sorting. Time and priority were implemented first because they are the minimum viable constraints for a useful scheduler.
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+The scheduler uses a **greedy / first-fit algorithm**: it iterates through tasks in priority order and adds each one if it fits in the remaining time. The tradeoff is:
+
+- **What it gives up:** optimality. A greedy pass can leave gaps. For example, if a 30-minute high task is followed by a 25-minute medium task, and the budget is 40 minutes, the 30-minute task takes the budget down to 10 — and a 15-minute low task that would have fit gets skipped. A knapsack solver would find the globally optimal combination.
+- **Why it is reasonable:** PawPal+ is a daily care tool, not a logistics optimizer. Owners think in priority terms ("make sure the walk and feeding happen first"), and a greedy priority sort matches that mental model exactly. The simplicity also makes the "Why was this plan chosen?" explanation easy to generate and easy to trust.
 
 ---
 
@@ -50,13 +60,20 @@ No changes yet — this section will be updated during implementation if the des
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+AI (Claude Code) was used across every phase of this project:
+
+- **Phase 1 – Design:** AI generated the initial Mermaid UML from a plain-English description of the four classes and their relationships. The most useful prompt pattern was describing *responsibilities* ("the Scheduler should retrieve tasks from the Owner's pets") rather than *implementation* ("write a method that…"), which produced cleaner structural suggestions.
+- **Phase 2 – Implementation:** AI filled in the method bodies for the class skeletons. The most effective prompts were incremental — asking for one method at a time and reviewing before moving to the next — rather than asking for the entire file at once.
+- **Phase 3 – Testing:** AI drafted the initial set of 9 tests from the existing method signatures. Asking "what are the most important edge cases for a pet scheduler with priority sorting?" produced the full list of edge cases (empty pet, zero budget, all tasks complete, duplicate conflicts) that expanded the suite to 26 tests.
+- **Phase 4 – UI:** AI updated `app.py` to surface conflict warnings and recurrence logic, using `st.warning`, `st.success`, and `st.toast` to match Streamlit best practices.
+
+The most consistently useful prompt pattern was: **context + constraint + question** — e.g., "Given these four dataclasses, the Scheduler must not exceed the owner's time budget — how should `build_plan()` implement greedy selection?"
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+During Phase 2, AI initially suggested placing `get_all_tasks()` on the `Scheduler` class rather than on `Owner`. The reasoning given was that "the Scheduler is the one that needs all tasks." This was rejected because it would have violated the separation of concerns established in the UML: `Owner` is responsible for managing its pets and their data, while `Scheduler` is responsible for building plans. Putting `get_all_tasks()` on `Scheduler` would mean `Scheduler` reaches into `Owner`'s internal structure directly, making it harder to change either class independently.
+
+The fix was verified by checking: "if I swap out `Owner` for a different data source, does `Scheduler` need to change?" With `get_all_tasks()` on `Owner`, the answer is no — `Scheduler` just calls `owner.get_all_tasks()` and doesn't care how the owner stores its pets.
 
 ---
 
@@ -64,13 +81,27 @@ No changes yet — this section will be updated during implementation if the des
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+The 26-test suite covers:
+
+- **Task state:** `mark_complete()`, `reset()`, default `completed=False`
+- **Recurrence:** `next_occurrence()` returns a fresh independent copy; original mutation does not affect the copy; works for all frequency values
+- **Pet CRUD:** add task, remove task, empty pet returns `[]`, removing a non-existent title is safe
+- **Owner aggregation:** add/remove pets, `get_all_tasks()` across multiple pets, owner with no pets
+- **Scheduler – sorting:** high before medium before low; ties handled (all same priority)
+- **Scheduler – budget:** total ≤ budget; budget smaller than all tasks → empty plan; explicit override
+- **Scheduler – exclusion:** completed tasks absent from plan; all-done → empty plan
+- **Scheduler – conflicts:** duplicate titles detected; case-insensitive; no false positives
+
+These tests were important because the scheduler's value to the user depends entirely on its correctness: a plan that exceeds the time budget, includes completed tasks, or silently duplicates entries would erode trust immediately.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
+Confidence: **4/5**.
+
+The core scheduling behaviors are well-covered. The remaining 1 star reflects:
+- No integration tests against the Streamlit UI (button clicks, session-state persistence)
+- No tests for weekly recurrence across a multi-day simulation
+- No tests for the `Owner.preferences` field, which is stored but not yet used in scheduling
 
 ---
 
@@ -78,12 +109,12 @@ No changes yet — this section will be updated during implementation if the des
 
 **a. What went well**
 
-- What part of this project are you most satisfied with?
+The layered architecture (Task → Pet → Owner → Scheduler) made each phase feel manageable. Because `Scheduler` talks to `Owner` and `Pet` through clean method calls rather than accessing internal fields directly, adding `get_conflicts()` and `next_occurrence()` in Phase 3 required no changes to the existing methods — they just slotted in alongside them. This separation-of-concerns payoff was the most satisfying part of the build.
 
 **b. What you would improve**
 
-- If you had another iteration, what would you improve or redesign?
+The current scheduler makes one pass and stops. A second pass (trying to fill remaining budget gaps with lower-priority tasks that fit) would improve utilisation without breaking the priority ordering guarantee. I would also move the time-slot calculation logic (the `08:00` running clock) out of `explain_plan()` and `app.py` into a dedicated `Scheduler._assign_times()` method so it is testable and reusable.
 
 **c. Key takeaway**
 
-- What is one important thing you learned about designing systems or working with AI on this project?
+The most important insight from this project: **AI is a fast first-drafter, but the architect role belongs to the developer.** AI could generate a working scheduler in minutes, but it could not decide *where* `get_all_tasks()` should live, *why* greedy-over-knapsack is the right tradeoff for this use case, or *what* edge cases actually matter for a pet owner's daily routine. Every meaningful design decision required human judgment — the AI just removed the friction of translating those decisions into code.
